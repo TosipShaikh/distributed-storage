@@ -1,0 +1,193 @@
+services:
+  # ============================================
+  # MySQL Database
+  # ============================================
+  mysql:
+    image: mysql:8.0
+    container_name: dfs-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: distributed_file_storage
+      MYSQL_USER: dfs_user
+      MYSQL_PASSWORD: dfs_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - dfs-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================
+  # Redis Cache
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: dfs-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - dfs-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Backend / Coordinator
+  # ============================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dfs-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: dfs_user
+      MYSQL_PASSWORD: dfs_password
+      MYSQL_DATABASE: distributed_file_storage
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      STORAGE_NODES: http://storage-node-1:5001,http://storage-node-2:5002,http://storage-node-3:5003,http://storage-node-4:5004
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - dfs-network
+
+  # ============================================
+  # Frontend
+  # ============================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dfs-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - dfs-network
+
+  # ============================================
+  # Storage Node 1
+  # ============================================
+  storage-node-1:
+    build:
+      context: ./storage-node
+      dockerfile: Dockerfile
+    container_name: dfs-storage-node-1
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      NODE_ID: node-1
+      PORT: 5001
+      DATA_DIR: /data
+    volumes:
+      - storage-data-1:/data
+    networks:
+      - dfs-network
+
+  # ============================================
+  # Storage Node 2
+  # ============================================
+  storage-node-2:
+    build:
+      context: ./storage-node
+      dockerfile: Dockerfile
+    container_name: dfs-storage-node-2
+    restart: unless-stopped
+    ports:
+      - "5002:5002"
+    environment:
+      NODE_ID: node-2
+      PORT: 5002
+      DATA_DIR: /data
+    volumes:
+      - storage-data-2:/data
+    networks:
+      - dfs-network
+
+  # ============================================
+  # Storage Node 3
+  # ============================================
+  storage-node-3:
+    build:
+      context: ./storage-node
+      dockerfile: Dockerfile
+    container_name: dfs-storage-node-3
+    restart: unless-stopped
+    ports:
+      - "5003:5003"
+    environment:
+      NODE_ID: node-3
+      PORT: 5003
+      DATA_DIR: /data
+    volumes:
+      - storage-data-3:/data
+    networks:
+      - dfs-network
+
+  # ============================================
+  # Storage Node 4
+  # ============================================
+  storage-node-4:
+    build:
+      context: ./storage-node
+      dockerfile: Dockerfile
+    container_name: dfs-storage-node-4
+    restart: unless-stopped
+    ports:
+      - "5004:5004"
+    environment:
+      NODE_ID: node-4
+      PORT: 5004
+      DATA_DIR: /data
+    volumes:
+      - storage-data-4:/data
+    networks:
+      - dfs-network
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  mysql-data:
+    driver: local
+  redis-data:
+    driver: local
+  storage-data-1:
+    driver: local
+  storage-data-2:
+    driver: local
+  storage-data-3:
+    driver: local
+  storage-data-4:
+    driver: local
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  dfs-network:
+    driver: bridge
