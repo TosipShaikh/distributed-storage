@@ -65,4 +65,11 @@ coverage/
 temp*.md
 temp_*.md
 scratch*.md
+step*.md
+walkthrough*.md
+test-storage-node.*
+test-*.ps1
+test-*.bat
+test-*.sh
+
 
