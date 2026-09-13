@@ -67,7 +67,10 @@ temp_*.md
 scratch*.md
 step*.md
 walkthrough*.md
+README.md
+readme.md
 test-storage-node.*
+
 test-*.ps1
 test-*.bat
 test-*.sh
