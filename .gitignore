@@ -28,6 +28,7 @@ pnpm-debug.log*
 data/
 storage-data/
 storage-data-*/
+uploads-temp/
 *.bin
 *.chunk
 
@@ -53,6 +54,7 @@ desktop.ini
 # Testing & Coverage
 coverage/
 .nyc_output/
+test/
 
 # Cache & Temporary files
 .cache/

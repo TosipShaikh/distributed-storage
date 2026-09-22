@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import multer from 'multer';
 
 /**
  * Global error handler middleware.
@@ -11,7 +12,14 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   console.error('[Error]', err.message);
-  console.error(err.stack);
+
+  if (err instanceof multer.MulterError) {
+    res.status(400).json({
+      error: 'Upload Error',
+      message: err.message,
+    });
+    return;
+  }
 
   res.status(500).json({
     error: 'Internal Server Error',
@@ -20,3 +28,4 @@ export function errorHandler(
       : err.message,
   });
 }
+
