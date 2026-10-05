@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS files (
 
 CREATE TABLE IF NOT EXISTS chunks (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  chunk_id VARCHAR(64) NOT NULL UNIQUE,
   file_id INT NOT NULL,
   sequence_number INT NOT NULL,
   size BIGINT NOT NULL,
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS chunks (
   FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
   UNIQUE KEY uk_file_chunk_seq (file_id, sequence_number),
   INDEX idx_chunks_file_id (file_id),
+  INDEX idx_chunks_chunk_id (chunk_id),
   INDEX idx_chunks_hash (hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

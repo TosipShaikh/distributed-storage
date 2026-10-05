@@ -57,11 +57,50 @@ export interface DfsFile {
 
 export interface Chunk {
   id: number;
+  chunk_id: string;
   file_id: number;
   sequence_number: number;
   size: number;
   hash: string;
   created_at: Date;
+}
+
+export interface ChunkPlan {
+  sequenceNumber: number;
+  startByte: number;
+  endByte: number;
+  size: number;
+}
+
+export interface ChunkInfo {
+  chunkId: string;
+  fileId: number;
+  sequenceNumber: number;
+  size: number;
+  hash: string;
+}
+
+export type ChunkStreamProvider = () => NodeJS.ReadableStream;
+
+export type ChunkDispatchHandler = (
+  chunk: ChunkInfo,
+  createStream: ChunkStreamProvider
+) => Promise<void>;
+
+export interface ChunkPlacement {
+  chunkId: string;
+  chunkDbId: number;
+  sequenceNumber: number;
+  size: number;
+  hash: string;
+  node: {
+    id: number;
+    nodeId: string;
+    host: string;
+    port: number;
+  };
+  status: 'stored' | 'failed';
+  replicaId?: number;
 }
 
 export interface StorageNodeRecord {

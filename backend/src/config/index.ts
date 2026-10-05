@@ -32,6 +32,17 @@ export const config = {
   upload: {
     tempDir: process.env.UPLOAD_TEMP_DIR || path.resolve(process.cwd(), 'uploads-temp'),
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '524288000', 10), // 500MB
+    chunkSize: parseInt(process.env.CHUNK_SIZE || '10485760', 10), // 10MB default (10 * 1024 * 1024)
+  },
+
+  chunk: {
+    defaultSize: parseInt(process.env.CHUNK_SIZE || '10485760', 10), // 10MB default (10 * 1024 * 1024)
+  },
+
+  storage: {
+    requestTimeout: parseInt(process.env.STORAGE_NODE_TIMEOUT || '5000', 10), // 5000ms
+    concurrency: parseInt(process.env.STORAGE_CONCURRENCY || '4', 10), // 4 concurrent chunk uploads
+    replicationFactor: parseInt(process.env.REPLICATION_FACTOR || '2', 10), // default 2 copies per chunk
   },
 };
 

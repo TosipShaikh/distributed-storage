@@ -35,6 +35,7 @@ const tableQueries: { name: string; query: string }[] = [
     query: `
       CREATE TABLE IF NOT EXISTS chunks (
         id INT AUTO_INCREMENT PRIMARY KEY,
+        chunk_id VARCHAR(64) NOT NULL UNIQUE,
         file_id INT NOT NULL,
         sequence_number INT NOT NULL,
         size BIGINT NOT NULL,
@@ -43,6 +44,7 @@ const tableQueries: { name: string; query: string }[] = [
         FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
         UNIQUE KEY uk_file_chunk_seq (file_id, sequence_number),
         INDEX idx_chunks_file_id (file_id),
+        INDEX idx_chunks_chunk_id (chunk_id),
         INDEX idx_chunks_hash (hash)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `,
@@ -114,6 +116,25 @@ export async function runMigrations(): Promise<void> {
       await connection.query(query);
       console.log(`[Migration] Table '${name}' verified/created.`);
     }
+
+    // Safe upgrade for existing databases missing chunk_id column
+    const [chunkCols] = await connection.query<any[]>(
+      `SHOW COLUMNS FROM chunks LIKE 'chunk_id'`
+    );
+    if (chunkCols.length === 0) {
+      console.log("[Migration] Adding missing 'chunk_id' column to 'chunks' table...");
+      await connection.query(
+        `ALTER TABLE chunks ADD COLUMN chunk_id VARCHAR(64) NULL AFTER id`
+      );
+      await connection.query(
+        `UPDATE chunks SET chunk_id = UUID() WHERE chunk_id IS NULL`
+      );
+      await connection.query(
+        `ALTER TABLE chunks MODIFY COLUMN chunk_id VARCHAR(64) NOT NULL, ADD UNIQUE KEY uk_chunk_id (chunk_id)`
+      );
+      console.log("[Migration] 'chunk_id' column successfully added.");
+    }
+
     console.log('[Migration] All metadata tables ready.');
   } catch (error) {
     console.error('[Migration] Failed to run migrations:', (error as Error).message);
