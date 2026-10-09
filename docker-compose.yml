@@ -102,8 +102,12 @@ services:
       - "5001:5001"
     environment:
       NODE_ID: node-1
+      HOST: storage-node-1
       PORT: 5001
       DATA_DIR: /data
+      BACKEND_URL: http://backend:4000
+    depends_on:
+      - backend
     volumes:
       - storage-data-1:/data
     networks:
@@ -122,8 +126,12 @@ services:
       - "5002:5002"
     environment:
       NODE_ID: node-2
+      HOST: storage-node-2
       PORT: 5002
       DATA_DIR: /data
+      BACKEND_URL: http://backend:4000
+    depends_on:
+      - backend
     volumes:
       - storage-data-2:/data
     networks:
@@ -142,8 +150,12 @@ services:
       - "5003:5003"
     environment:
       NODE_ID: node-3
+      HOST: storage-node-3
       PORT: 5003
       DATA_DIR: /data
+      BACKEND_URL: http://backend:4000
+    depends_on:
+      - backend
     volumes:
       - storage-data-3:/data
     networks:
@@ -162,8 +174,12 @@ services:
       - "5004:5004"
     environment:
       NODE_ID: node-4
+      HOST: storage-node-4
       PORT: 5004
       DATA_DIR: /data
+      BACKEND_URL: http://backend:4000
+    depends_on:
+      - backend
     volumes:
       - storage-data-4:/data
     networks:

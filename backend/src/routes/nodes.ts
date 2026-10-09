@@ -1,59 +1,143 @@
-import { Router, Request, Response } from 'express';
-import { config } from '../config';
-import { StorageNodeStatus, NodesResponse } from '../types';
+import { Router, Request, Response, NextFunction } from 'express';
+import { nodeHealthService } from '../services/nodeHealthService';
 
 const router = Router();
 
 /**
- * GET /api/nodes
- * Pings all configured storage nodes and returns their status.
+ * POST /api/nodes/register
+ * Register a storage node with the backend coordinator.
+ * Prevents duplicate registration by upserting in MySQL and updating Redis fast health cache.
  */
-router.get('/nodes', async (_req: Request, res: Response) => {
-  const nodeStatuses: StorageNodeStatus[] = await Promise.all(
-    config.storageNodes.map(async (nodeUrl): Promise<StorageNodeStatus> => {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
+router.post('/register', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { nodeId, host, port } = req.body;
 
-        const response = await fetch(`${nodeUrl}/health`, {
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
+    if (!nodeId || !host || !port) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'nodeId, host, and port are required for node registration',
+      });
+      return;
+    }
 
-        if (response.ok) {
-          const data = (await response.json()) as { nodeId?: string; uptime?: number };
-          return {
-            url: nodeUrl,
-            status: 'online',
-            nodeId: data.nodeId,
-            uptime: data.uptime,
-          };
-        }
+    const nodeRecord = await nodeHealthService.registerNode(req.body);
 
-        return {
-          url: nodeUrl,
-          status: 'offline',
-          error: `HTTP ${response.status}`,
-        };
-      } catch (error) {
-        return {
-          url: nodeUrl,
-          status: 'offline',
-          error: (error as Error).message,
-        };
-      }
-    })
-  );
+    res.status(200).json({
+      success: true,
+      message: `Node '${nodeId}' registered successfully`,
+      node: {
+        id: nodeRecord.id,
+        nodeId: nodeRecord.node_id,
+        host: nodeRecord.host,
+        port: nodeRecord.port,
+        totalCapacity: nodeRecord.total_storage,
+        currentUsage: nodeRecord.used_storage,
+        status: nodeRecord.status,
+        lastHeartbeat: nodeRecord.last_heartbeat,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
-  const onlineNodes = nodeStatuses.filter((n) => n.status === 'online').length;
+/**
+ * POST /api/nodes/heartbeat
+ * Periodic heartbeat sent by a storage node to update health state in Redis and MySQL.
+ */
+router.post('/heartbeat', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { nodeId } = req.body;
 
-  const response: NodesResponse = {
-    totalNodes: nodeStatuses.length,
-    onlineNodes,
-    nodes: nodeStatuses,
-  };
+    if (!nodeId) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: 'nodeId is required for heartbeat',
+      });
+      return;
+    }
 
-  res.json(response);
+    const result = await nodeHealthService.recordHeartbeat(req.body);
+
+    res.status(200).json({
+      success: true,
+      message: 'Heartbeat acknowledged',
+      nodeId: result.nodeId,
+      status: result.status,
+      timestamp: result.lastHeartbeat,
+    });
+  } catch (error: any) {
+    if (error.statusCode === 404) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: error.message,
+      });
+      return;
+    }
+    next(error);
+  }
+});
+
+/**
+ * GET /api/nodes/cluster/state (and /cluster)
+ * Returns the complete cluster state including node counts, capacity metrics, and live status.
+ */
+const handleClusterState = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const clusterState = await nodeHealthService.getClusterState();
+    res.status(200).json(clusterState);
+  } catch (error) {
+    next(error);
+  }
+};
+
+router.get('/cluster/state', handleClusterState);
+router.get('/cluster', handleClusterState);
+
+/**
+ * GET /api/nodes
+ * Returns all registered storage nodes with merged MySQL persistent metadata and Redis live state.
+ */
+router.get('/', async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const nodes = await nodeHealthService.getAllNodes();
+    const onlineNodes = nodes.filter((n) => n.status === 'HEALTHY' || n.status === 'online').length;
+
+    res.status(200).json({
+      totalNodes: nodes.length,
+      onlineNodes,
+      count: nodes.length,
+      nodes: nodes.map((n) => ({
+        ...n,
+        url: `http://${n.host}:${n.port}`,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/nodes/:id
+ * Retrieve details for a specific storage node by its string nodeId or numeric id.
+ */
+router.get('/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const node = await nodeHealthService.getNode(id);
+
+    if (!node) {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Storage node '${id}' not found in registry`,
+      });
+      return;
+    }
+
+    res.status(200).json(node);
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;

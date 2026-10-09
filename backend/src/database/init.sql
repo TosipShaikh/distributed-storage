@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS storage_nodes (
   port INT NOT NULL,
   total_storage BIGINT NOT NULL DEFAULT 0,
   used_storage BIGINT NOT NULL DEFAULT 0,
-  status ENUM('online', 'offline', 'maintenance') NOT NULL DEFAULT 'offline',
+  status ENUM('HEALTHY', 'UNAVAILABLE', 'FAILED', 'online', 'offline', 'maintenance') NOT NULL DEFAULT 'UNAVAILABLE',
   last_heartbeat TIMESTAMP NULL DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_storage_nodes_status (status)

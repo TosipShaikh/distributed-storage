@@ -8,7 +8,7 @@ import filesRouter from './files';
 const router = Router();
 
 router.use(healthRouter);
-router.use(nodesRouter);
+router.use('/nodes', nodesRouter);
 router.use(storageNodesRouter);
 router.use('/auth', authRouter);
 router.use('/files', filesRouter);

@@ -5,6 +5,7 @@ import { config } from './config';
 import routes from './routes';
 import { requestLogger } from './middleware/logger';
 import { errorHandler } from './middleware/errorHandler';
+import { nodeLifecycle } from './services/nodeLifecycle';
 
 const app = express();
 
@@ -30,13 +31,29 @@ app.use(routes);
 app.use(errorHandler);
 
 // Start server
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   console.log(`================================================`);
   console.log(`  Storage Node: ${config.nodeId}`);
   console.log(`  Port:         ${config.port}`);
+  console.log(`  Host:         ${config.host}`);
   console.log(`  Data Dir:     ${config.dataDir}`);
+  console.log(`  Backend:      ${config.backendUrl}`);
+  console.log(`  Heartbeat:    ${config.heartbeatIntervalMs}ms`);
   console.log(`  Started:      ${new Date().toISOString()}`);
   console.log(`================================================`);
+
+  // Start registration and heartbeat loop
+  nodeLifecycle.start();
 });
+
+// Graceful shutdown handling
+const handleGracefulShutdown = async (signal: string) => {
+  console.log(`[${config.nodeId}] Received ${signal}. Commencing shutdown...`);
+  await nodeLifecycle.shutdown(server, signal);
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => handleGracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => handleGracefulShutdown('SIGINT'));
 
 export default app;

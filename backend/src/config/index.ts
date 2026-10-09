@@ -44,5 +44,10 @@ export const config = {
     concurrency: parseInt(process.env.STORAGE_CONCURRENCY || '4', 10), // 4 concurrent chunk uploads
     replicationFactor: parseInt(process.env.REPLICATION_FACTOR || '2', 10), // default 2 copies per chunk
   },
+
+  heartbeat: {
+    intervalMs: parseInt(process.env.HEARTBEAT_INTERVAL_MS || '5000', 10), // 5000ms
+    timeoutMs: parseInt(process.env.HEARTBEAT_TIMEOUT_MS || '15000', 10), // 15000ms (3 missed heartbeats -> UNAVAILABLE)
+  },
 };
 

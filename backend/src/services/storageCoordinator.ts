@@ -22,11 +22,12 @@ export class StorageCoordinator {
         const parsed = new URL(nodeUrl);
         const host = parsed.hostname;
         const port = parseInt(parsed.port, 10) || 80;
-        const nodeId = `storage-node-${i + 1}`;
+        const match = host.match(/node-(\d+)/);
+        const nodeId = match ? `node-${match[1]}` : `node-${i + 1}`;
 
         const existing = await storageNodeRepository.findByNodeId(nodeId);
         if (!existing) {
-          await storageNodeRepository.upsert(nodeId, host, port, 10 * 1024 * 1024 * 1024); // 10 GB default
+          await storageNodeRepository.upsert(nodeId, host, port, 100 * 1024 * 1024 * 1024, 0, 'HEALTHY'); // 100 GB default
         }
       } catch (err) {
         console.warn(`[StorageCoordinator] Failed to sync node URL '${nodeUrl}':`, (err as Error).message);
@@ -86,23 +87,23 @@ export class StorageCoordinator {
     const healthyNodes: StorageNodeRecord[] = [];
 
     for (const node of registeredNodes) {
-      // Ignore nodes statically marked 'maintenance'
-      if (node.status === 'maintenance') {
+      // Ignore nodes marked 'maintenance' or 'FAILED'
+      if (node.status === 'maintenance' || node.status === 'FAILED') {
         continue;
       }
 
       // Live health probe with timeout
       const isAlive = await this.pingNode(node);
       if (isAlive) {
-        if (node.status !== 'online') {
-          await storageNodeRepository.updateStatus(node.node_id, 'online');
-          node.status = 'online';
+        if (node.status !== 'HEALTHY' && node.status !== 'online') {
+          await storageNodeRepository.updateStatus(node.node_id, 'HEALTHY');
+          node.status = 'HEALTHY';
         }
         healthyNodes.push(node);
       } else {
-        if (node.status !== 'offline') {
-          await storageNodeRepository.updateStatus(node.node_id, 'offline');
-          node.status = 'offline';
+        if (node.status !== 'UNAVAILABLE' && node.status !== 'offline') {
+          await storageNodeRepository.updateStatus(node.node_id, 'UNAVAILABLE');
+          node.status = 'UNAVAILABLE';
         }
       }
     }

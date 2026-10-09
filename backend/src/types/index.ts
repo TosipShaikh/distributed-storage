@@ -32,10 +32,61 @@ export interface ErrorResponse {
 // ============================================
 
 export type FileStatus = 'uploading' | 'complete' | 'failed' | 'deleting';
-export type NodeStatus = 'online' | 'offline' | 'maintenance';
+export type NodeStatus = 'HEALTHY' | 'UNAVAILABLE' | 'FAILED' | 'online' | 'offline' | 'maintenance';
 export type ReplicaStatus = 'active' | 'syncing' | 'failed';
 export type RecoveryEventType = 'node_failure' | 'chunk_loss' | 'rebalance';
 export type RecoveryEventStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+
+export interface NodeRegistrationPayload {
+  nodeId: string;
+  host: string;
+  port: number;
+  totalCapacity?: number;
+  total_capacity?: number;
+  total_storage?: number;
+  currentUsage?: number;
+  current_usage?: number;
+  used_storage?: number;
+}
+
+export interface NodeHeartbeatPayload {
+  nodeId: string;
+  currentUsage?: number;
+  current_usage?: number;
+  used_storage?: number;
+  totalCapacity?: number;
+  total_capacity?: number;
+  status?: NodeStatus;
+}
+
+export interface ClusterNodeInfo {
+  id?: number;
+  nodeId: string;
+  host: string;
+  port: number;
+  totalCapacity: number;
+  currentUsage: number;
+  status: NodeStatus;
+  lastHeartbeat: string | null;
+  sourceOfTruth: 'mysql';
+  liveState: 'redis' | 'mysql';
+}
+
+export interface ClusterStateResponse {
+  cluster: {
+    status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL';
+    totalNodes: number;
+    healthyNodes: number;
+    unavailableNodes: number;
+    failedNodes: number;
+    totalCapacity: number;
+    currentUsage: number;
+    availableCapacity: number;
+    replicationFactor: number;
+    timestamp: string;
+  };
+  nodes: ClusterNodeInfo[];
+}
 
 export interface User {
   id: number;

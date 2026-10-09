@@ -59,7 +59,7 @@ const tableQueries: { name: string; query: string }[] = [
         port INT NOT NULL,
         total_storage BIGINT NOT NULL DEFAULT 0,
         used_storage BIGINT NOT NULL DEFAULT 0,
-        status ENUM('online', 'offline', 'maintenance') NOT NULL DEFAULT 'offline',
+        status ENUM('HEALTHY', 'UNAVAILABLE', 'FAILED', 'online', 'offline', 'maintenance') NOT NULL DEFAULT 'UNAVAILABLE',
         last_heartbeat TIMESTAMP NULL DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_storage_nodes_status (status)
@@ -133,6 +133,15 @@ export async function runMigrations(): Promise<void> {
         `ALTER TABLE chunks MODIFY COLUMN chunk_id VARCHAR(64) NOT NULL, ADD UNIQUE KEY uk_chunk_id (chunk_id)`
       );
       console.log("[Migration] 'chunk_id' column successfully added.");
+    }
+
+    // Safe upgrade for storage_nodes status column to support HEALTHY, UNAVAILABLE, FAILED
+    try {
+      await connection.query(
+        `ALTER TABLE storage_nodes MODIFY COLUMN status ENUM('HEALTHY', 'UNAVAILABLE', 'FAILED', 'online', 'offline', 'maintenance') NOT NULL DEFAULT 'UNAVAILABLE'`
+      );
+    } catch {
+      // Column alteration not needed or already matching
     }
 
     console.log('[Migration] All metadata tables ready.');

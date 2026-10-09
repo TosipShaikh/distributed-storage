@@ -5,24 +5,28 @@ import { StorageNodeRecord, NodeStatus } from '../types';
 export class StorageNodeRepository {
   /**
    * Register or update a storage node's registration and configuration.
+   * Prevents duplicate node registration by upserting on node_id.
    */
   async upsert(
     nodeId: string,
     host: string,
     port: number,
-    totalStorage: number = 0
+    totalStorage: number = 0,
+    usedStorage: number = 0,
+    status: NodeStatus = 'HEALTHY'
   ): Promise<StorageNodeRecord> {
     const query = `
-      INSERT INTO storage_nodes (node_id, host, port, total_storage, status, last_heartbeat)
-      VALUES (?, ?, ?, ?, 'online', CURRENT_TIMESTAMP)
+      INSERT INTO storage_nodes (node_id, host, port, total_storage, used_storage, status, last_heartbeat)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON DUPLICATE KEY UPDATE
         host = VALUES(host),
         port = VALUES(port),
         total_storage = VALUES(total_storage),
-        status = 'online',
+        used_storage = VALUES(used_storage),
+        status = VALUES(status),
         last_heartbeat = CURRENT_TIMESTAMP
     `;
-    await pool.execute(query, [nodeId, host, port, totalStorage]);
+    await pool.execute(query, [nodeId, host, port, totalStorage, usedStorage, status]);
 
     const node = await this.findByNodeId(nodeId);
     if (!node) {
@@ -80,10 +84,17 @@ export class StorageNodeRepository {
    * Get all storage nodes currently marked online.
    */
   async findAllOnline(): Promise<StorageNodeRecord[]> {
+    return this.findAllHealthy();
+  }
+
+  /**
+   * Get all storage nodes currently marked healthy or online.
+   */
+  async findAllHealthy(): Promise<StorageNodeRecord[]> {
     const query = `
       SELECT id, node_id, host, port, total_storage, used_storage, status, last_heartbeat, created_at
       FROM storage_nodes
-      WHERE status = 'online'
+      WHERE status IN ('HEALTHY', 'online')
       ORDER BY id ASC
     `;
     const [rows] = await pool.execute<RowDataPacket[]>(query);
@@ -93,25 +104,32 @@ export class StorageNodeRepository {
   /**
    * Record a heartbeat from a node and update its reported used storage.
    */
-  async updateHeartbeat(nodeId: string, usedStorage?: number): Promise<void> {
+  async updateHeartbeat(
+    nodeId: string,
+    usedStorage?: number,
+    totalStorage?: number,
+    status: NodeStatus = 'HEALTHY'
+  ): Promise<void> {
+    const updates: string[] = ['last_heartbeat = CURRENT_TIMESTAMP', 'status = ?'];
+    const params: any[] = [status];
+
     if (usedStorage !== undefined) {
-      const query = `
-        UPDATE storage_nodes
-        SET last_heartbeat = CURRENT_TIMESTAMP,
-            used_storage = ?,
-            status = 'online'
-        WHERE node_id = ?
-      `;
-      await pool.execute(query, [usedStorage, nodeId]);
-    } else {
-      const query = `
-        UPDATE storage_nodes
-        SET last_heartbeat = CURRENT_TIMESTAMP,
-            status = 'online'
-        WHERE node_id = ?
-      `;
-      await pool.execute(query, [nodeId]);
+      updates.push('used_storage = ?');
+      params.push(usedStorage);
     }
+
+    if (totalStorage !== undefined) {
+      updates.push('total_storage = ?');
+      params.push(totalStorage);
+    }
+
+    params.push(nodeId);
+    const query = `
+      UPDATE storage_nodes
+      SET ${updates.join(', ')}
+      WHERE node_id = ?
+    `;
+    await pool.execute(query, params);
   }
 
   /**

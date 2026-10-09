@@ -8,8 +8,10 @@ import { config } from './index';
 const redis = new Redis({
   host: config.redis.host,
   port: config.redis.port,
-  maxRetriesPerRequest: 3,
+  lazyConnect: process.env.NODE_ENV === 'test',
+  maxRetriesPerRequest: process.env.NODE_ENV === 'test' ? 1 : 3,
   retryStrategy(times: number) {
+    if (process.env.NODE_ENV === 'test') return null;
     const delay = Math.min(times * 200, 3000);
     return delay;
   },
@@ -20,7 +22,9 @@ redis.on('connect', () => {
 });
 
 redis.on('error', (err: Error) => {
-  console.error('[Redis] Connection error:', err.message);
+  if (process.env.NODE_ENV !== 'test') {
+    console.error('[Redis] Connection error:', err.message);
+  }
 });
 
 /**

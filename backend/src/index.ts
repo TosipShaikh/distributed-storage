@@ -4,6 +4,7 @@ import { config } from './config';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { runMigrations } from './database/migration';
+import { storageCoordinator } from './services/storageCoordinator';
 
 // Import to initialize connections
 import './config/db';
@@ -35,6 +36,7 @@ app.use(errorHandler);
 async function startServer(): Promise<void> {
   try {
     await runMigrations();
+    await storageCoordinator.syncConfiguredNodes();
 
     app.listen(config.port, () => {
       console.log(`================================================`);
