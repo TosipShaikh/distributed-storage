@@ -71,6 +71,44 @@ export class RecoveryEventRepository {
     `;
     await pool.execute(query, [status, id]);
   }
+
+  /**
+   * Find most recent recovery events.
+   */
+  async findRecent(limit: number = 50): Promise<RecoveryEvent[]> {
+    const query = `
+      SELECT id, node_id, chunk_id, event_type, status, created_at
+      FROM recovery_events
+      ORDER BY id DESC
+      LIMIT ?
+    `;
+    const [rows] = await pool.execute<RowDataPacket[]>(query, [String(limit)]);
+    return rows as RecoveryEvent[];
+  }
+
+  /**
+   * Get summary counts of recovery events by status.
+   */
+  async getStats(): Promise<{ total: number; pending: number; in_progress: number; completed: number; failed: number }> {
+    const query = `
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+      FROM recovery_events
+    `;
+    const [rows] = await pool.execute<RowDataPacket[]>(query);
+    const r = rows[0] || {};
+    return {
+      total: Number(r.total || 0),
+      pending: Number(r.pending || 0),
+      in_progress: Number(r.in_progress || 0),
+      completed: Number(r.completed || 0),
+      failed: Number(r.failed || 0),
+    };
+  }
 }
 
 export const recoveryEventRepository = new RecoveryEventRepository();

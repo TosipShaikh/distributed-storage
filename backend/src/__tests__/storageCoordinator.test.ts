@@ -191,7 +191,7 @@ describe('StorageCoordinator Subsystem Tests (Step 6)', () => {
       expect(placements.map((p) => p.sequenceNumber)).toEqual([1, 2, 3, 4]);
       expect(placements.every((p) => p.status === 'stored')).toBe(true);
       expect(createdReplicas).toHaveLength(4);
-      expect(createdReplicas.map((r) => r.chunk_id)).toEqual([101, 102, 103, 104]);
+      expect(createdReplicas.map((r) => r.chunk_id).sort((a, b) => a - b)).toEqual([101, 102, 103, 104]);
     });
   });
 

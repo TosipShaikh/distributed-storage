@@ -49,5 +49,11 @@ export const config = {
     intervalMs: parseInt(process.env.HEARTBEAT_INTERVAL_MS || '5000', 10), // 5000ms
     timeoutMs: parseInt(process.env.HEARTBEAT_TIMEOUT_MS || '15000', 10), // 15000ms (3 missed heartbeats -> UNAVAILABLE)
   },
+
+  recovery: {
+    enabled: process.env.RECOVERY_ENABLED !== 'false',
+    intervalMs: parseInt(process.env.RECOVERY_INTERVAL_MS || '5000', 10),
+    maxRetries: parseInt(process.env.RECOVERY_MAX_RETRIES || '3', 10),
+  },
 };
 

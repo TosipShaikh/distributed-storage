@@ -350,4 +350,10 @@ describe('Step 8: Storage Node Management Subsystem', () => {
       expect(criticalState.cluster.status).toBe('CRITICAL');
     });
   });
+
+  afterAll(async () => {
+    try {
+      redis.disconnect();
+    } catch {}
+  });
 });

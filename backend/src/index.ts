@@ -5,6 +5,7 @@ import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { runMigrations } from './database/migration';
 import { storageCoordinator } from './services/storageCoordinator';
+import { recoveryCoordinator } from './services/recoveryCoordinator';
 
 // Import to initialize connections
 import './config/db';
@@ -45,6 +46,10 @@ async function startServer(): Promise<void> {
       console.log(`  Nodes:   ${config.storageNodes.length} configured`);
       console.log(`  Started: ${new Date().toISOString()}`);
       console.log(`================================================`);
+
+      if (config.recovery?.enabled !== false) {
+        recoveryCoordinator.start();
+      }
     });
   } catch (error) {
     console.error('Fatal: Failed to initialize database metadata layer:', (error as Error).message);

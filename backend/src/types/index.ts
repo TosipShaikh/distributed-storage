@@ -88,6 +88,26 @@ export interface ClusterStateResponse {
   nodes: ClusterNodeInfo[];
 }
 
+export interface RecoveryResult {
+  recoveredNodes: number;
+  recoveredChunks: number;
+  failedChunks: number;
+  details: string[];
+}
+
+export interface RecoveryStatusResponse {
+  isRunning: boolean;
+  activeJobs: number;
+  lastCheck: string | null;
+  stats: {
+    total: number;
+    pending: number;
+    in_progress: number;
+    completed: number;
+    failed: number;
+  };
+}
+
 export interface User {
   id: number;
   name: string;

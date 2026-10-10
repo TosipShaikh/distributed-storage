@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { nodeHealthService } from '../services/nodeHealthService';
+import { recoveryCoordinator } from '../services/recoveryCoordinator';
+import { recoveryEventRepository } from '../repositories/recoveryEventRepository';
 
 const router = Router();
 
@@ -93,6 +95,46 @@ const handleClusterState = async (_req: Request, res: Response, next: NextFuncti
 
 router.get('/cluster/state', handleClusterState);
 router.get('/cluster', handleClusterState);
+
+/**
+ * GET /api/nodes/recovery/status
+ * Returns current status and statistics for automated node failure detection & recovery.
+ */
+router.get('/recovery/status', async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const status = await recoveryCoordinator.getStatus();
+    res.status(200).json(status);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/nodes/recovery/events
+ * Returns recent failure detection and recovery events from the database.
+ */
+router.get('/recovery/events', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const limit = parseInt(req.query.limit as string, 10) || 50;
+    const events = await recoveryEventRepository.findRecent(limit);
+    res.status(200).json({ count: events.length, events });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/nodes/recovery/trigger
+ * Manually trigger a node failure check and replica recovery pass.
+ */
+router.post('/recovery/trigger', async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const result = await recoveryCoordinator.checkAndRecoverNodes();
+    res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * GET /api/nodes
