@@ -36,6 +36,14 @@ const Sidebar: React.FC<SidebarProps> = ({ onOpenUpload, totalStorageUsed = 0 })
           <IconFile size={18} />
           <span>My Files</span>
         </NavLink>
+
+        <NavLink
+          to="/admin"
+          className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+        >
+          <IconShieldCheck size={18} />
+          <span>Admin Cluster</span>
+        </NavLink>
       </nav>
 
       <div className="sidebar-storage-card">
