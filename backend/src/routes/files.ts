@@ -97,8 +97,48 @@ router.post(
 );
 
 /**
+ * Compute the high-level health status of a file based on its chunks and replicas:
+ * - HEALTHY: all chunks have active replicas >= REPLICATION_FACTOR
+ * - RECOVERING: chunks have failed replicas undergoing replacement or file is currently uploading
+ * - DEGRADED: chunk active replicas are below REPLICATION_FACTOR
+ */
+async function computeFileHealth(file: any): Promise<'HEALTHY' | 'DEGRADED' | 'RECOVERING'> {
+  if (file.status === 'uploading') return 'RECOVERING';
+  if (file.status === 'failed') return 'DEGRADED';
+  if (file.status !== 'complete') return 'DEGRADED';
+
+  const chunks = await chunkRepository.findByFileId(file.id);
+  if (chunks.length === 0) return 'HEALTHY';
+
+  const targetReplication = config.storage.replicationFactor || 2;
+  let hasFailedReplica = false;
+  let isUnderReplicated = false;
+
+  for (const chunk of chunks) {
+    const replicas = await chunkReplicaRepository.findByChunkId(chunk.id);
+    const activeReplicas = replicas.filter((r) => r.status === 'active');
+    const failedReplicas = replicas.filter((r) => r.status === 'failed');
+
+    if (failedReplicas.length > 0) {
+      hasFailedReplica = true;
+    }
+    if (activeReplicas.length < targetReplication) {
+      isUnderReplicated = true;
+    }
+  }
+
+  if (hasFailedReplica) {
+    return 'RECOVERING';
+  }
+  if (isUnderReplicated) {
+    return 'DEGRADED';
+  }
+  return 'HEALTHY';
+}
+
+/**
  * GET /api/files
- * List all files belonging to the authenticated user.
+ * List all files belonging to the authenticated user with computed health status.
  */
 router.get('/', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -108,9 +148,16 @@ router.get('/', async (req: Request, res: Response, next: NextFunction): Promise
     }
 
     const files = await fileRepository.findByUserId(req.user.id);
+    const enrichedFiles = await Promise.all(
+      files.map(async (file) => ({
+        ...file,
+        health_status: await computeFileHealth(file),
+      }))
+    );
+
     res.json({
-      count: files.length,
-      files,
+      count: enrichedFiles.length,
+      files: enrichedFiles,
     });
   } catch (error) {
     next(error);
@@ -148,14 +195,23 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction): Prom
       chunks.map(async (chunk) => {
         const replicas = await chunkReplicaRepository.findByChunkId(chunk.id);
         return {
-          ...chunk,
-          replicas,
+          id: chunk.id,
+          chunk_id: chunk.chunk_id,
+          sequence_number: chunk.sequence_number,
+          size: chunk.size,
+          hash: chunk.hash,
+          replica_count: replicas.filter((r) => r.status === 'active').length,
+          status: replicas.some((r) => r.status === 'failed') ? 'recovering' : 'healthy',
         };
       })
     );
 
+    const healthStatus = await computeFileHealth(file);
+
     res.json({
       ...file,
+      health_status: healthStatus,
+      replication_factor: config.storage.replicationFactor || 2,
       chunks: chunksWithReplicas,
     });
   } catch (error) {

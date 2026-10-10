@@ -1,189 +1,297 @@
-import { useState, useEffect } from 'react';
-import apiClient from '../api/client';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { filesApi } from '../api/files';
+import type { FileItem } from '../types';
+import Navbar from '../components/Navbar';
+import Sidebar from '../components/Sidebar';
+import FileStatusBadge from '../components/FileStatusBadge';
+import FileUploadModal from '../components/FileUploadModal';
+import ConfirmModal from '../components/ConfirmModal';
+import LoadingSpinner from '../components/LoadingSpinner';
+import {
+  IconFile,
+  IconDownload,
+  IconTrash,
+  IconEye,
+  IconRefresh,
+  IconCloud,
+  IconPlus,
+} from '../components/Icons';
 
-interface ServiceHealth {
-  mysql: boolean;
-  redis: boolean;
-}
-
-interface HealthData {
-  status: string;
-  uptime: number;
-  timestamp: string;
-  services: ServiceHealth;
-}
-
-interface StorageNode {
-  url: string;
-  status: string;
-  nodeId?: string;
-  uptime?: number;
-  error?: string;
-}
-
-interface NodesData {
-  totalNodes: number;
-  onlineNodes: number;
-  nodes: StorageNode[];
-}
-
-function Dashboard() {
-  const [health, setHealth] = useState<HealthData | null>(null);
-  const [nodes, setNodes] = useState<NodesData | null>(null);
+const Dashboard: React.FC = () => {
+  const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  const fetchStatus = async () => {
+  const navigate = useNavigate();
+
+  const fetchFiles = async (isSilent = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       setError(null);
-
-      const [healthRes, nodesRes] = await Promise.all([
-        apiClient.get('/api/health'),
-        apiClient.get('/api/nodes'),
-      ]);
-
-      setHealth(healthRes.data);
-      setNodes(nodesRes.data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect to backend');
+      const data = await filesApi.getFiles();
+      setFiles(data.files || []);
+    } catch (err: any) {
+      if (!isSilent) {
+        setError(err.response?.data?.message || err.message || 'Failed to load files from server');
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 15000);
+    fetchFiles();
+    // Auto-refresh periodically to reflect live status transitions
+    const interval = setInterval(() => {
+      fetchFiles(true);
+    }, 12000);
     return () => clearInterval(interval);
   }, []);
 
-  const formatUptime = (seconds: number): string => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    return `${h}h ${m}m ${s}s`;
+  const totalStorageUsed = useMemo(() => {
+    return files.reduce((acc, file) => acc + (file.size || 0), 0);
+  }, [files]);
+
+  const filteredFiles = useMemo(() => {
+    if (!searchQuery.trim()) return files;
+    const q = searchQuery.toLowerCase();
+    return files.filter((f) => f.filename.toLowerCase().includes(q));
+  }, [files, searchQuery]);
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   };
 
-  const getStatusColor = (status: string): string => {
-    switch (status) {
-      case 'ok':
-      case 'online':
-        return '#22c55e';
-      case 'degraded':
-        return '#f59e0b';
-      default:
-        return '#ef4444';
+  const formatDate = (dateStr: string): string => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return dateStr;
     }
   };
 
-  const getStatusEmoji = (status: string): string => {
-    switch (status) {
-      case 'ok':
-      case 'online':
-        return '●';
-      case 'degraded':
-        return '●';
-      default:
-        return '●';
+  const handleDownload = async (file: FileItem) => {
+    try {
+      setDownloadingId(file.id);
+      await filesApi.downloadFile(file.id, file.filename);
+      setActionNotice(`Downloaded ${file.filename}`);
+      setTimeout(() => setActionNotice(null), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'File download failed');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!fileToDelete) return;
+    try {
+      setIsDeleting(true);
+      await filesApi.deleteFile(fileToDelete.id);
+      setFiles((prev) => prev.filter((f) => f.id !== fileToDelete.id));
+      setActionNotice(`Deleted ${fileToDelete.filename}`);
+      setTimeout(() => setActionNotice(null), 3000);
+      setFileToDelete(null);
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to delete file');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
-    <div className="dashboard">
-      <div className="dashboard-header">
-        <h1>Distributed File Storage</h1>
-        <p className="subtitle">System Dashboard</p>
-        <button className="refresh-btn" onClick={fetchStatus} disabled={loading}>
-          {loading ? 'Refreshing...' : '↻ Refresh'}
-        </button>
+    <div className="dashboard-layout">
+      <Navbar searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+
+      <div className="dashboard-body">
+        <Sidebar
+          onOpenUpload={() => setIsUploadOpen(true)}
+          totalStorageUsed={totalStorageUsed}
+        />
+
+        <main className="dashboard-content">
+          <div className="content-toolbar">
+            <div className="toolbar-left">
+              <h2>My Files</h2>
+              <span className="file-count-badge">
+                {filteredFiles.length} {filteredFiles.length === 1 ? 'file' : 'files'}
+              </span>
+            </div>
+
+            <div className="toolbar-right">
+              <button
+                className="btn outline icon-btn-text"
+                onClick={() => fetchFiles(false)}
+                title="Refresh File List"
+                id="refresh-files-btn"
+              >
+                <IconRefresh size={16} />
+                <span>Refresh</span>
+              </button>
+
+              <button
+                className="btn primary icon-btn-text mobile-upload-btn"
+                onClick={() => setIsUploadOpen(true)}
+              >
+                <IconPlus size={16} />
+                <span>Upload</span>
+              </button>
+            </div>
+          </div>
+
+          {actionNotice && (
+            <div className="alert-banner success action-toast">
+              <span>{actionNotice}</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="alert-banner error">
+              <span>{error}</span>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="content-loading">
+              <LoadingSpinner message="Loading your drive files..." />
+            </div>
+          ) : filteredFiles.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon-wrap">
+                <IconCloud size={56} />
+              </div>
+              <h3>
+                {searchQuery ? `No files match "${searchQuery}"` : 'Your drive is empty'}
+              </h3>
+              <p>
+                {searchQuery
+                  ? 'Try checking for typos or searching for a different keyword.'
+                  : 'Upload files to start storing them securely across our resilient distributed cluster.'}
+              </p>
+              {!searchQuery && (
+                <button
+                  className="btn primary"
+                  onClick={() => setIsUploadOpen(true)}
+                  id="empty-upload-btn"
+                >
+                  <IconPlus size={18} />
+                  <span>Upload Your First File</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="table-responsive-card">
+              <table className="files-table" id="files-table">
+                <thead>
+                  <tr>
+                    <th className="col-name">File Name</th>
+                    <th className="col-status">Status</th>
+                    <th className="col-size">Size</th>
+                    <th className="col-date">Uploaded</th>
+                    <th className="col-actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredFiles.map((file) => (
+                    <tr
+                      key={file.id}
+                      className="file-row"
+                      onClick={() => navigate(`/files/${file.id}`)}
+                    >
+                      <td className="col-name">
+                        <div className="filename-cell">
+                          <div className="file-type-icon">
+                            <IconFile size={20} />
+                          </div>
+                          <span className="file-title-text" title={file.filename}>
+                            {file.filename}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="col-status">
+                        <FileStatusBadge
+                          status={file.health_status || file.status}
+                          size="sm"
+                        />
+                      </td>
+                      <td className="col-size">{formatFileSize(file.size)}</td>
+                      <td className="col-date">{formatDate(file.created_at)}</td>
+                      <td className="col-actions" onClick={(e) => e.stopPropagation()}>
+                        <div className="row-action-buttons">
+                          <button
+                            className="icon-action-btn view"
+                            onClick={() => navigate(`/files/${file.id}`)}
+                            title="View File Details"
+                          >
+                            <IconEye size={17} />
+                          </button>
+
+                          <button
+                            className="icon-action-btn download"
+                            onClick={() => handleDownload(file)}
+                            disabled={downloadingId === file.id}
+                            title="Download File"
+                          >
+                            {downloadingId === file.id ? (
+                              <span className="mini-spinner" />
+                            ) : (
+                              <IconDownload size={17} />
+                            )}
+                          </button>
+
+                          <button
+                            className="icon-action-btn delete"
+                            onClick={() => setFileToDelete(file)}
+                            title="Delete File"
+                          >
+                            <IconTrash size={17} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </main>
       </div>
 
-      {error && (
-        <div className="card error-card">
-          <h3>⚠ Connection Error</h3>
-          <p>{error}</p>
-          <p className="hint">Make sure the backend is running on port 4000.</p>
-        </div>
-      )}
+      <FileUploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        onUploadSuccess={() => fetchFiles(false)}
+      />
 
-      {health && (
-        <div className="card">
-          <h2>
-            <span
-              className="status-dot"
-              style={{ color: getStatusColor(health.status) }}
-            >
-              {getStatusEmoji(health.status)}
-            </span>
-            {' '}Coordinator Status
-          </h2>
-          <div className="status-grid">
-            <div className="status-item">
-              <span className="label">Status</span>
-              <span className="value" style={{ color: getStatusColor(health.status) }}>
-                {health.status.toUpperCase()}
-              </span>
-            </div>
-            <div className="status-item">
-              <span className="label">Uptime</span>
-              <span className="value">{formatUptime(health.uptime)}</span>
-            </div>
-            <div className="status-item">
-              <span className="label">MySQL</span>
-              <span className="value" style={{ color: health.services.mysql ? '#22c55e' : '#ef4444' }}>
-                {health.services.mysql ? 'Connected' : 'Disconnected'}
-              </span>
-            </div>
-            <div className="status-item">
-              <span className="label">Redis</span>
-              <span className="value" style={{ color: health.services.redis ? '#22c55e' : '#ef4444' }}>
-                {health.services.redis ? 'Connected' : 'Disconnected'}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {nodes && (
-        <div className="card">
-          <h2>Storage Nodes ({nodes.onlineNodes}/{nodes.totalNodes} online)</h2>
-          <div className="nodes-grid">
-            {nodes.nodes.map((node, index) => (
-              <div key={index} className={`node-card ${node.status}`}>
-                <div className="node-header">
-                  <span
-                    className="status-dot"
-                    style={{ color: getStatusColor(node.status) }}
-                  >
-                    {getStatusEmoji(node.status)}
-                  </span>
-                  <span className="node-id">{node.nodeId || `Node ${index + 1}`}</span>
-                </div>
-                <div className="node-details">
-                  <span className="node-status" style={{ color: getStatusColor(node.status) }}>
-                    {node.status.toUpperCase()}
-                  </span>
-                  {node.uptime !== undefined && (
-                    <span className="node-uptime">Up: {formatUptime(node.uptime)}</span>
-                  )}
-                  {node.error && (
-                    <span className="node-error">{node.error}</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!loading && !error && !health && (
-        <div className="card">
-          <p>No data available. The backend may still be starting up.</p>
-        </div>
-      )}
+      <ConfirmModal
+        isOpen={!!fileToDelete}
+        title="Delete File"
+        message={`Are you sure you want to permanently delete "${fileToDelete?.filename}"? This will delete all stored chunks and replicas.`}
+        confirmLabel={isDeleting ? 'Deleting...' : 'Delete Permanently'}
+        isDanger={true}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setFileToDelete(null)}
+      />
     </div>
   );
-}
+};
 
 export default Dashboard;
